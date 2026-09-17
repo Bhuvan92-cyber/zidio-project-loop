@@ -49,6 +49,7 @@ let getTrends: typeof import("@/app/api/trends/route").GET;
 let getReports: typeof import("@/app/api/reports/route").GET;
 let createReport: typeof import("@/app/api/reports/route").POST;
 let getReport: typeof import("@/app/api/reports/[id]/route").GET;
+let exportReportPdf: typeof import("@/app/api/reports/[id]/pdf/route").GET;
 let getMembers: typeof import("@/app/api/workspace/members/route").GET;
 let updateMember: typeof import("@/app/api/workspace/members/[id]/route").PATCH;
 
@@ -64,6 +65,7 @@ test.before(async () => {
   ({ GET: getTrends } = await import("@/app/api/trends/route"));
   ({ GET: getReports, POST: createReport } = await import("@/app/api/reports/route"));
   ({ GET: getReport } = await import("@/app/api/reports/[id]/route"));
+  ({ GET: exportReportPdf } = await import("@/app/api/reports/[id]/pdf/route"));
   ({ GET: getMembers } = await import("@/app/api/workspace/members/route"));
   ({ PATCH: updateMember } = await import("@/app/api/workspace/members/[id]/route"));
 });
@@ -79,6 +81,7 @@ test("protected read routes reject unauthenticated requests", async () => {
     await ask(new Request("http://localhost/api/ask", { method: "POST", body: JSON.stringify({ question: "What do customers want?" }) })),
     await getReports(),
     await getReport(new Request("http://localhost/api/reports/id"), context),
+    await exportReportPdf(new Request("http://localhost/api/reports/id/pdf"), context),
     await getMembers(),
   ]) assert.equal(response.status, 401);
 });
