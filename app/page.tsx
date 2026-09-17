@@ -1,101 +1,24 @@
-import Image from "next/image";
+"use client";
+
+import Link from "next/link";
+import { FormEvent, ReactNode, useEffect, useState } from "react";
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { LogoutButton } from "@/components/logout-button";
+
+type DashboardData = { totalItems: number; negativePercentage: number | null; newThisWeek: number; volume: { bucket: "day" | "week" | "month"; points: Array<{ label: string; count: number }> }; sentiment: Array<{ sentiment: string; count: number }>; topThemes: Array<{ name: string; count: number }> };
+const sentimentColors = ["#193c2a", "#b8d95f", "#e8876b"];
+const navigation = [{ label: "Dashboard", href: "/dashboard", icon: "↗" }, { label: "Inbox", href: "/inbox", icon: "▤" }, { label: "Trends", href: "/trends", icon: "⌁" }, { label: "Ask LOOP", href: "/ask", icon: "◌" }, { label: "Reports", href: "/reports", icon: "▥" }];
+function dateValue(date: Date) { return date.toISOString().slice(0, 10); }
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+  const today = dateValue(new Date());
+  const initialStartDate = dateValue(new Date(Date.now() - 29 * 86_400_000));
+  const [startDate, setStartDate] = useState(initialStartDate); const [endDate, setEndDate] = useState(today); const [data, setData] = useState<DashboardData | null>(null); const [loading, setLoading] = useState(true); const [error, setError] = useState("");
+  async function loadDashboard(start: string, end: string) { setLoading(true); setError(""); try { const response = await fetch(`/api/analytics/dashboard?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`); const body = await response.json().catch(() => null) as { data?: DashboardData; error?: string } | null; if (!response.ok) { setError(body?.error ?? "Dashboard data could not be loaded."); setData(null); return; } setData(body?.data ?? null); } catch { setError("We could not reach the dashboard. Try again."); setData(null); } finally { setLoading(false); } }
+  useEffect(() => { void loadDashboard(initialStartDate, today); }, [initialStartDate, today]);
+  function submitRange(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (startDate > endDate) { setError("Start date must be on or before end date."); return; } void loadDashboard(startDate, endDate); }
+  const empty = data?.totalItems === 0;
+  return <main className="grid-paper min-h-screen bg-[#f4f7f5] p-4 text-[#17221d] sm:p-6 lg:p-8"><div className="mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-[1440px] overflow-hidden rounded-[28px] border border-[#d6e1d9] bg-[#f8faf8]/95 shadow-[0_20px_80px_rgba(46,76,56,0.12)]"><aside className="hidden w-64 shrink-0 flex-col border-r border-[#dce5de] bg-[#eef4ef] p-5 md:flex"><div className="flex items-center gap-3 px-2 py-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-[#193c2a] text-lg font-bold text-[#d9f36e]">L</div><div><p className="font-semibold tracking-tight">LOOP</p><p className="text-[10px] uppercase tracking-[0.2em] text-[#66806e]">Feedback intelligence</p></div></div><nav className="mt-10 space-y-1" aria-label="Primary navigation"><p className="px-3 pb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#8aa092]">Workspace</p>{navigation.map((item, index) => <Link key={item.href} href={item.href} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm ${index === 0 ? "bg-[#dcebd9] font-semibold text-[#193c2a]" : "text-[#61736a] hover:bg-white/70"}`}><span className="grid h-6 w-6 place-items-center rounded-md bg-white/70 text-xs">{item.icon}</span>{item.label}</Link>)}</nav><div className="mt-auto rounded-2xl bg-[#193c2a] p-4 text-[#f1f6ef]"><p className="text-xs font-semibold text-[#d9f36e]">Good morning, team</p><p className="mt-2 text-sm leading-5 text-[#c3d3c7]">Your feedback pulse is ready for review.</p><Link href="/inbox" className="mt-4 inline-block text-xs font-semibold underline underline-offset-4">Open inbox</Link></div></aside><section className="min-w-0 flex-1 p-5 sm:p-8 lg:p-10"><header className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#789181]">Workspace / Dashboard</p><h1 className="mt-2 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">Your feedback pulse.</h1><p className="mt-2 text-sm text-[#718379]">Real customer signals, grouped by the period you choose.</p></div><LogoutButton /></header><nav aria-label="Mobile navigation" className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 md:hidden">{navigation.map((item) => <Link key={item.href} href={item.href} className="rounded-xl border border-[#dce5de] bg-white px-3 py-2 text-center text-xs font-semibold text-[#53685a]">{item.label}</Link>)}</nav><form onSubmit={submitRange} className="mt-8 flex flex-wrap items-end gap-3 rounded-2xl border border-[#dce5de] bg-white p-4"><label className="text-xs font-semibold text-[#53685a]">Start date<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-2 block rounded-lg border border-[#d6e1d9] px-3 py-2 text-sm" /></label><label className="text-xs font-semibold text-[#53685a]">End date<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-2 block rounded-lg border border-[#d6e1d9] px-3 py-2 text-sm" /></label><button disabled={loading} className="rounded-xl bg-[#193c2a] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">{loading ? "Loading..." : "Apply range"}</button></form>{error && <p role="alert" className="mt-5 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm text-[#a44335]">{error}</p>}{loading && !data && <p role="status" className="mt-8 rounded-2xl border border-dashed border-[#cbdace] bg-white p-12 text-center text-sm text-[#718379]">Loading dashboard data...</p>}{empty && !loading && <p role="status" className="mt-8 rounded-2xl border border-dashed border-[#cbdace] bg-white p-12 text-center text-sm text-[#718379]">No feedback exists for this date range.</p>}{data && !empty && !loading && <><div className="mt-8 grid gap-4 sm:grid-cols-3"><Stat label="Total feedback" value={String(data.totalItems)} note="In selected date range" /><Stat label="Negative sentiment" value={data.negativePercentage === null ? "—" : `${data.negativePercentage.toFixed(1)}%`} note="Of classified feedback" /><Stat label="New this week" value={String(data.newThisWeek)} note="Created since Monday UTC" /></div><div className="mt-6 grid gap-6 xl:grid-cols-2"><ChartCard title="Feedback volume" subtitle={`Grouped by ${data.volume.bucket}`}><ResponsiveContainer width="100%" height="100%"><LineChart data={data.volume.points}><CartesianGrid strokeDasharray="3 3" stroke="#e5eee7" /><XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={24} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip /><Line type="monotone" dataKey="count" stroke="#193c2a" strokeWidth={3} dot={false} /></LineChart></ResponsiveContainer></ChartCard><ChartCard title="Sentiment breakdown" subtitle="Persisted classifications in the selected range"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data.sentiment} dataKey="count" nameKey="sentiment" cx="50%" cy="50%" outerRadius={92} label>{data.sentiment.map((item, index) => <Cell key={item.sentiment} fill={sentimentColors[index]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></ChartCard><ChartCard title="Top themes" subtitle="Most frequent persisted theme associations"><ResponsiveContainer width="100%" height="100%"><BarChart data={data.topThemes} layout="vertical" margin={{ left: 20, right: 12 }}><CartesianGrid strokeDasharray="3 3" stroke="#e5eee7" /><XAxis type="number" allowDecimals={false} tick={{ fontSize: 11 }} /><YAxis type="category" dataKey="name" width={92} tick={{ fontSize: 11 }} /><Tooltip /><Bar dataKey="count" fill="#b8d95f" radius={[0, 6, 6, 0]} /></BarChart></ResponsiveContainer></ChartCard></div></>}</section></div></main>;
 }
+function Stat({ label, value, note }: { label: string; value: string; note: string }) { return <div className="rounded-2xl border border-[#dce5de] bg-white/75 p-5"><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#789181]">{label}</p><p className="mt-4 text-3xl font-semibold tracking-[-0.04em]">{value}</p><p className="mt-2 text-xs text-[#84958b]">{note}</p></div>; }
+function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) { return <section className="rounded-2xl border border-[#dce5de] bg-white p-5"><h2 className="font-semibold">{title}</h2><p className="mt-1 text-xs text-[#789181]">{subtitle}</p><div className="mt-5 h-64 w-full">{children}</div></section>; }
