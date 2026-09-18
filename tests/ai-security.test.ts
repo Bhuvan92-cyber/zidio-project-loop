@@ -4,6 +4,7 @@ import { classificationSchema, groundedAnswerSchema, reportNarrativeSchema } fro
 import { cosineSimilarity } from "@/lib/ai/embeddings";
 import { enforceGrounding } from "@/lib/ai/qa";
 import { GeminiProvider, parseModelJson } from "@/lib/ai/provider";
+import { statusAfterClassification } from "@/lib/ai/classifier";
 import { answerQuestion } from "@/lib/ai/qa";
 import { AIProviderError, isProviderUnavailableError } from "@/lib/ai/errors";
 
@@ -119,4 +120,24 @@ test("Gemini provider maps 429 RESOURCE_EXHAUSTED to a bounded 503 error", async
   );
   assert.equal(attempts, 2);
   if (previousKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previousKey;
+});
+
+test("feedback reclassification preserves status and applies new classification", () => {
+  assert.equal(statusAfterClassification("NEW"), "REVIEWED");
+  assert.equal(statusAfterClassification("REVIEWED"), "REVIEWED");
+  assert.equal(statusAfterClassification("ACTIONED"), "ACTIONED");
+
+  const validClassification = {
+    sentiment: "NEG",
+    sentimentScore: -0.7,
+    themes: ["Billing"],
+    featureArea: "Invoicing",
+    rationale: "Customer is complaining about billing delays.",
+  };
+  const parsed = classificationSchema.safeParse(validClassification);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.sentiment, "NEG");
+    assert.equal(parsed.data.featureArea, "Invoicing");
+  }
 });

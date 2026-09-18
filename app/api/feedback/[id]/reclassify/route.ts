@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { authErrorResponse, requireRole } from "@/lib/auth/guards";
 import { processFeedback } from "@/lib/ai/classifier";
 
+export const dynamic = "force-dynamic";
+
 type Context = { params: { id: string } };
 
 export async function POST(_request: Request, { params }: Context) {
