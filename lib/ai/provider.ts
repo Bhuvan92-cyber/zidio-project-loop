@@ -6,7 +6,7 @@ export interface AIProvider {
   complete<T>(input: { system: string; user: string; schema: ZodType<T> }): Promise<T>;
 }
 
-type GeminiClient = { models: { generateContent: (input: { model: string; contents: string; config: { systemInstruction: string; temperature: number; maxOutputTokens: number; responseMimeType: string; responseJsonSchema: unknown } }) => Promise<{ text?: string }> } };
+type GeminiClient = { models: { generateContent: (input: { model: string; contents: string; config: { systemInstruction: string; temperature: number; maxOutputTokens: number; responseMimeType: string; responseJsonSchema: unknown; httpOptions?: { timeout?: number } } }) => Promise<{ text?: string }> } };
 type GeminiClientFactory = (apiKey: string) => GeminiClient;
 class InvalidStructuredOutputError extends Error {}
 
@@ -33,7 +33,7 @@ export class GeminiProvider implements AIProvider {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) throw new Error("AI provider is not configured.");
     const client = this.createClient(apiKey);
-    const model = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
+    const model = process.env.GEMINI_MODEL ?? "gemini-3.5-flash-lite";
     let lastFailureKind: "unavailable" | "invalid-response" | "request-failed" = "request-failed";
     let lastFailure: unknown;
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -47,6 +47,7 @@ export class GeminiProvider implements AIProvider {
             maxOutputTokens: 4000,
             responseMimeType: "application/json",
             responseJsonSchema: toJSONSchema(schema, { target: "draft-07" }),
+            httpOptions: { timeout: 15_000 },
           },
         });
         const text = response.text;
@@ -68,7 +69,10 @@ export class GeminiProvider implements AIProvider {
       } catch (error) {
         lastFailure = error;
         lastFailureKind = error instanceof InvalidStructuredOutputError ? "invalid-response" : isProviderUnavailableError(error) ? "unavailable" : "request-failed";
-        if (attempt === 0) continue;
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          continue;
+        }
       }
     }
     const details = providerFailureDetails(lastFailure);

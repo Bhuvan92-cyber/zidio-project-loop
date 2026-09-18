@@ -13,7 +13,20 @@ export class AIProviderError extends Error {
 
 export function isProviderUnavailableError(error: unknown) {
   if (!error || typeof error !== "object") return false;
-  const candidate = error as { status?: unknown; code?: unknown; message?: unknown };
+  const candidate = error as { name?: unknown; status?: unknown; code?: unknown; message?: unknown };
   const message = typeof candidate.message === "string" ? candidate.message : "";
-  return candidate.status === 503 || candidate.code === 503 || candidate.code === "UNAVAILABLE" || /\b503\b|UNAVAILABLE|high demand|temporarily unavailable/i.test(message);
+  const code = typeof candidate.code === "string" || typeof candidate.code === "number" ? String(candidate.code) : "";
+  const name = typeof candidate.name === "string" ? candidate.name : "";
+
+  return (
+    candidate.status === 503 ||
+    candidate.status === 429 ||
+    code === "503" ||
+    code === "429" ||
+    code === "UNAVAILABLE" ||
+    code === "RESOURCE_EXHAUSTED" ||
+    name === "AbortError" ||
+    name === "TimeoutError" ||
+    /\b(?:503|429)\b|UNAVAILABLE|RESOURCE_EXHAUSTED|high demand|temporarily unavailable|quota|rate\s*limit|timed?\s*out|abort/i.test(message)
+  );
 }

@@ -4,6 +4,8 @@ import { createFeedback, listFeedback } from "@/lib/feedback/service";
 import { feedbackCreateSchema, feedbackQuerySchema } from "@/lib/validation/feedback";
 import { processFeedback } from "@/lib/ai/classifier";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   try {
     const session = await requireSession();

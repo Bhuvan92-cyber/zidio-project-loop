@@ -5,7 +5,7 @@ import { cosineSimilarity } from "@/lib/ai/embeddings";
 import { enforceGrounding } from "@/lib/ai/qa";
 import { GeminiProvider, parseModelJson } from "@/lib/ai/provider";
 import { answerQuestion } from "@/lib/ai/qa";
-import { AIProviderError } from "@/lib/ai/errors";
+import { AIProviderError, isProviderUnavailableError } from "@/lib/ai/errors";
 
 const source = { id: "feedback-a", content: "Users want faster onboarding.", customerLabel: "Acme", channel: "SUPPORT_TICKET", score: 0.9 };
 
@@ -84,4 +84,39 @@ test("Gemini provider maps truncated structured output to a safe 502 error", asy
 
 test("model JSON parser removes optional markdown fences", () => {
   assert.deepEqual(parseModelJson("```json\n{\"ok\":true}\n```"), { ok: true });
+});
+
+test("isProviderUnavailableError recognizes 429, RESOURCE_EXHAUSTED, and timeout errors", () => {
+  assert.equal(isProviderUnavailableError({ status: 429 }), true);
+  assert.equal(isProviderUnavailableError({ code: "RESOURCE_EXHAUSTED" }), true);
+  assert.equal(isProviderUnavailableError({ code: 429 }), true);
+  assert.equal(isProviderUnavailableError({ name: "AbortError" }), true);
+  assert.equal(isProviderUnavailableError({ name: "TimeoutError" }), true);
+  assert.equal(isProviderUnavailableError(new Error("Resource has been exhausted (e.g. check quota).")), true);
+  assert.equal(isProviderUnavailableError(new Error("Rate limit exceeded")), true);
+  assert.equal(isProviderUnavailableError(new Error("Request timed out")), true);
+  assert.equal(isProviderUnavailableError({ status: 400 }), false);
+  assert.equal(isProviderUnavailableError(new Error("Invalid JSON")), false);
+});
+
+test("Gemini provider maps 429 RESOURCE_EXHAUSTED to a bounded 503 error", async () => {
+  const previousKey = process.env.GEMINI_API_KEY;
+  process.env.GEMINI_API_KEY = "test-key";
+  let attempts = 0;
+  const provider = new GeminiProvider(() => ({
+    models: {
+      generateContent: async () => {
+        attempts += 1;
+        const error = new Error("RESOURCE_EXHAUSTED: Quota exceeded");
+        Object.assign(error, { status: 429, code: "RESOURCE_EXHAUSTED" });
+        throw error;
+      },
+    },
+  }));
+  await assert.rejects(
+    () => provider.complete({ system: "Return JSON.", user: "test", schema: classificationSchema.pick({ rationale: true }) }),
+    (error: unknown) => error instanceof AIProviderError && error.status === 503 && error.kind === "unavailable"
+  );
+  assert.equal(attempts, 2);
+  if (previousKey === undefined) delete process.env.GEMINI_API_KEY; else process.env.GEMINI_API_KEY = previousKey;
 });
