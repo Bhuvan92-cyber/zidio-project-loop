@@ -7,7 +7,14 @@ import { LogoutButton } from "@/components/logout-button";
 
 type DashboardData = { totalItems: number; negativePercentage: number | null; newThisWeek: number; volume: { bucket: "day" | "week" | "month"; points: Array<{ label: string; count: number }> }; sentiment: Array<{ sentiment: string; count: number }>; topThemes: Array<{ name: string; count: number }> };
 const sentimentColors = ["#193c2a", "#b8d95f", "#e8876b"];
-const navigation = [{ label: "Dashboard", href: "/dashboard", icon: "↗" }, { label: "Inbox", href: "/inbox", icon: "▤" }, { label: "Trends", href: "/trends", icon: "⌁" }, { label: "Ask LOOP", href: "/ask", icon: "◌" }, { label: "Reports", href: "/reports", icon: "▥" }];
+const navigation = [
+  { label: "Dashboard", href: "/dashboard", icon: "↗" },
+  { label: "Inbox", href: "/inbox", icon: "▤" },
+  { label: "Trends", href: "/trends", icon: "⌁" },
+  { label: "Ask LOOP", href: "/ask", icon: "◌" },
+  { label: "Reports", href: "/reports", icon: "▥" },
+  { label: "Workspace Members", href: "/settings", icon: "⚙" },
+];
 function dateValue(date: Date) { return date.toISOString().slice(0, 10); }
 
 export default function Home() {

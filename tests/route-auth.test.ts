@@ -40,6 +40,7 @@ let getDashboard: typeof import("@/app/api/analytics/dashboard/route").GET;
 let createFeedback: typeof import("@/app/api/feedback/route").POST;
 let getFeedbackById: typeof import("@/app/api/feedback/[id]/route").GET;
 let updateFeedbackById: typeof import("@/app/api/feedback/[id]/route").PATCH;
+let deleteFeedbackById: typeof import("@/app/api/feedback/[id]/route").DELETE;
 let importCsv: typeof import("@/app/api/feedback/import/route").POST;
 let getThemes: typeof import("@/app/api/themes/route").GET;
 let getThemeFeedback: typeof import("@/app/api/themes/[id]/feedback/route").GET;
@@ -56,7 +57,7 @@ let updateMember: typeof import("@/app/api/workspace/members/[id]/route").PATCH;
 test.before(async () => {
   ({ GET: getFeedback, POST: createFeedback } = await import("@/app/api/feedback/route"));
   ({ GET: getDashboard } = await import("@/app/api/analytics/dashboard/route"));
-  ({ GET: getFeedbackById, PATCH: updateFeedbackById } = await import("@/app/api/feedback/[id]/route"));
+  ({ GET: getFeedbackById, PATCH: updateFeedbackById, DELETE: deleteFeedbackById } = await import("@/app/api/feedback/[id]/route"));
   ({ POST: importCsv } = await import("@/app/api/feedback/import/route"));
   ({ GET: getThemes } = await import("@/app/api/themes/route"));
   ({ GET: getThemeFeedback } = await import("@/app/api/themes/[id]/feedback/route"));
@@ -90,9 +91,11 @@ test("protected write routes reject unauthenticated requests before mutation", a
   const create = await createFeedback(new Request("http://localhost/api/feedback", { method: "POST", body: JSON.stringify({ content: "test", channel: "COMMUNITY" }) }));
   const rerun = await reclassify(new Request("http://localhost/api/feedback/id/reclassify", { method: "POST" }), context);
   const report = await createReport(new Request("http://localhost/api/reports", { method: "POST", body: JSON.stringify({ periodStart: "2026-09-01", periodEnd: "2026-09-30" }) }));
+  const del = await deleteFeedbackById(new Request("http://localhost/api/feedback/id", { method: "DELETE" }), context);
   assert.equal(create.status, 401);
   assert.equal(rerun.status, 401);
   assert.equal(report.status, 401);
+  assert.equal(del.status, 401);
 });
 
 test("authenticated role boundaries are enforced by the route handlers", async () => {
@@ -104,6 +107,7 @@ test("authenticated role boundaries are enforced by the route handlers", async (
     await importCsv(new Request("http://localhost/api/feedback/import", { method: "POST" })),
     await reclassify(new Request("http://localhost/api/feedback/id/reclassify", { method: "POST", body: "{}" }), context),
     await updateFeedbackById(new Request("http://localhost/api/feedback/id", { method: "PATCH", body: "{}" }), context),
+    await deleteFeedbackById(new Request("http://localhost/api/feedback/id", { method: "DELETE" }), context),
     await createReport(new Request("http://localhost/api/reports", { method: "POST", body: "{}" })),
   ]) {
     assert.equal(response.status, 403);
@@ -113,6 +117,10 @@ test("authenticated role boundaries are enforced by the route handlers", async (
   assert.equal((await getMembers()).status, 403);
   assert.equal(
     (await updateMember(new Request("http://localhost/api/workspace/members/id", { method: "PATCH", body: "{}" }), context)).status,
+    403,
+  );
+  assert.equal(
+    (await deleteFeedbackById(new Request("http://localhost/api/feedback/id", { method: "DELETE" }), context)).status,
     403,
   );
 

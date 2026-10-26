@@ -12,6 +12,7 @@ export async function PATCH(request: Request, { params }: Context) {
     const parsed = memberRoleSchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ error: "Invalid role." }, { status: 400 });
     const updated = await db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Workspace" WHERE id = ${session.user.workspaceId} FOR UPDATE`;
       const member = await tx.user.findFirst({ where: { id: params.id, workspaceId: session.user.workspaceId }, select: { id: true, role: true } });
       if (!member) return { error: "Member not found.", status: 404 as const };
       if (!canChangeMemberRole(session.user.role, member.role, parsed.data.role, session.user.id, member.id, await tx.user.count({ where: { workspaceId: session.user.workspaceId, role: "ADMIN" } }))) {

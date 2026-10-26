@@ -45,6 +45,10 @@ export function authErrorResponse(error: unknown) {
     console.error("Database unavailable");
     return NextResponse.json({ error: "The database is temporarily unavailable." }, { status: 503 });
   }
+  if (error instanceof Error && (/P2034|serialization|could not serialize/i.test(error.message) || (error as { code?: string }).code === "P2034")) {
+    console.error("Concurrent update conflict detected");
+    return NextResponse.json({ error: "Concurrent modification conflict. Please retry." }, { status: 409 });
+  }
   console.error("Unhandled route error", error instanceof Error ? error.name : "unknown error");
   return NextResponse.json({ error: "Unable to complete request." }, { status: 500 });
 }

@@ -13,6 +13,10 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "test:tenant": "node --experimental-test-module-mocks --import dotenv/config --import tsx --test tests/prisma-tenant.integration.test.ts",
+    "test:unit": "node --experimental-test-module-mocks --import dotenv/config --import tsx --test tests/**/*.unit.test.ts",
+    "test:integration": "node --experimental-test-module-mocks --import dotenv/config --import tsx --test tests/**/*.integration.test.ts",
+    "test:e2e": "node --import dotenv/config --import tsx --test tests/rbac-e2e.test.ts",
+    "test:rbac": "node --experimental-test-module-mocks --import dotenv/config --import tsx --test tests/rbac*.test.ts",
     "test": "node --experimental-test-module-mocks --import dotenv/config --import tsx --test tests/**/*.test.ts"
   },
   "dependencies": {
@@ -36,6 +40,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8",
     "eslint-config-next": "14.2.30",
+    "playwright": "^1.64.0",
     "postcss": "^8",
     "prisma": "5.22.0",
     "tailwindcss": "^3.4.1",
