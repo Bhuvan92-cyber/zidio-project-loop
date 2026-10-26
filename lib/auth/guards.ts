@@ -18,9 +18,9 @@ export async function requireSession() {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, role: true, workspaceId: true },
+    select: { id: true, role: true, workspaceId: true, membershipStatus: true },
   });
-  if (!user) throw new AuthError("Authentication required.", 401);
+  if (!user || user.membershipStatus !== "ACTIVE") throw new AuthError("Authentication required.", 401);
   session.user.workspaceId = user.workspaceId;
   session.user.role = user.role;
   return session;

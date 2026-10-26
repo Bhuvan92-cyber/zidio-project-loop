@@ -69,6 +69,11 @@ let getReportById: typeof import("@/app/api/reports/[id]/route").GET;
 let exportReportPdf: typeof import("@/app/api/reports/[id]/pdf/route").GET;
 let getMembers: typeof import("@/app/api/workspace/members/route").GET;
 let updateMemberRole: typeof import("@/app/api/workspace/members/[id]/route").PATCH;
+let deleteMember: typeof import("@/app/api/workspace/members/[id]/route").DELETE;
+let getInvitations: typeof import("@/app/api/workspace/invitations/route").GET;
+let createInvitation: typeof import("@/app/api/workspace/invitations/route").POST;
+let resendInvitation: typeof import("@/app/api/workspace/invitations/[id]/resend/route").POST;
+let revokeInvitation: typeof import("@/app/api/workspace/invitations/[id]/revoke/route").POST;
 
 test.before(async () => {
   ({ GET: getDashboard } = await import("@/app/api/analytics/dashboard/route"));
@@ -84,7 +89,10 @@ test.before(async () => {
   ({ GET: getReportById } = await import("@/app/api/reports/[id]/route"));
   ({ GET: exportReportPdf } = await import("@/app/api/reports/[id]/pdf/route"));
   ({ GET: getMembers } = await import("@/app/api/workspace/members/route"));
-  ({ PATCH: updateMemberRole } = await import("@/app/api/workspace/members/[id]/route"));
+  ({ PATCH: updateMemberRole, DELETE: deleteMember } = await import("@/app/api/workspace/members/[id]/route"));
+  ({ GET: getInvitations, POST: createInvitation } = await import("@/app/api/workspace/invitations/route"));
+  ({ POST: resendInvitation } = await import("@/app/api/workspace/invitations/[id]/resend/route"));
+  ({ POST: revokeInvitation } = await import("@/app/api/workspace/invitations/[id]/revoke/route"));
 });
 
 test("RBAC matrix: Unauthenticated requests are rejected across all endpoints with 401", async () => {
@@ -109,6 +117,11 @@ test("RBAC matrix: Unauthenticated requests are rejected across all endpoints wi
     exportReportPdf(new Request("http://localhost/api/reports/id/pdf"), sampleIdContext),
     getMembers(),
     updateMemberRole(new Request("http://localhost/api/workspace/members/id", { method: "PATCH", body: "{}" }), sampleIdContext),
+    deleteMember(new Request("http://localhost/api/workspace/members/id", { method: "DELETE" }), sampleIdContext),
+    getInvitations(),
+    createInvitation(new Request("http://localhost/api/workspace/invitations", { method: "POST", body: "{}" })),
+    resendInvitation(new Request("http://localhost/api/workspace/invitations/id/resend", { method: "POST" }), sampleIdContext),
+    revokeInvitation(new Request("http://localhost/api/workspace/invitations/id/revoke", { method: "POST" }), sampleIdContext),
   ];
 
   for (const respPromise of endpoints) {
@@ -117,12 +130,12 @@ test("RBAC matrix: Unauthenticated requests are rejected across all endpoints wi
   }
 });
 
-test("RBAC matrix: VIEWER role allows viewing and denies all mutations and member management", async () => {
+test("RBAC matrix: VIEWER role allows viewing and denies all mutations, member management, and invitations", async () => {
   currentAuth.authenticated = true;
   currentAuth.role = "VIEWER";
 
-  // VIEWER write restrictions (must return 403)
-  const deniedWrites = [
+  // VIEWER is denied all write operations, member management, and invitations
+  const deniedOperations = [
     await createFeedback(new Request("http://localhost/api/feedback", { method: "POST", body: "{}" })),
     await updateFeedbackById(new Request("http://localhost/api/feedback/id", { method: "PATCH", body: "{}" }), sampleIdContext),
     await deleteFeedbackById(new Request("http://localhost/api/feedback/id", { method: "DELETE" }), sampleIdContext),
@@ -131,29 +144,39 @@ test("RBAC matrix: VIEWER role allows viewing and denies all mutations and membe
     await createReport(new Request("http://localhost/api/reports", { method: "POST", body: "{}" })),
     await getMembers(),
     await updateMemberRole(new Request("http://localhost/api/workspace/members/id", { method: "PATCH", body: "{}" }), sampleIdContext),
+    await deleteMember(new Request("http://localhost/api/workspace/members/id", { method: "DELETE" }), sampleIdContext),
+    await getInvitations(),
+    await createInvitation(new Request("http://localhost/api/workspace/invitations", { method: "POST", body: "{}" })),
+    await resendInvitation(new Request("http://localhost/api/workspace/invitations/id/resend", { method: "POST" }), sampleIdContext),
+    await revokeInvitation(new Request("http://localhost/api/workspace/invitations/id/revoke", { method: "POST" }), sampleIdContext),
   ];
 
-  for (const resp of deniedWrites) {
+  for (const resp of deniedOperations) {
     assert.equal(resp.status, 403, `Expected 403 Forbidden for VIEWER`);
   }
 });
 
-test("RBAC matrix: ANALYST role allows feedback and reports mutations but denies delete feedback and member management", async () => {
+test("RBAC matrix: ANALYST role allows feedback and reports mutations but denies delete feedback, member management, and invitations", async () => {
   currentAuth.authenticated = true;
   currentAuth.role = "ANALYST";
 
-  // ANALYST is denied member management and delete feedback
+  // ANALYST is denied member management, feedback deletion, and invitations
   const deniedOperations = [
     await deleteFeedbackById(new Request("http://localhost/api/feedback/id", { method: "DELETE" }), sampleIdContext),
     await getMembers(),
     await updateMemberRole(new Request("http://localhost/api/workspace/members/id", { method: "PATCH", body: "{}" }), sampleIdContext),
+    await deleteMember(new Request("http://localhost/api/workspace/members/id", { method: "DELETE" }), sampleIdContext),
+    await getInvitations(),
+    await createInvitation(new Request("http://localhost/api/workspace/invitations", { method: "POST", body: "{}" })),
+    await resendInvitation(new Request("http://localhost/api/workspace/invitations/id/resend", { method: "POST" }), sampleIdContext),
+    await revokeInvitation(new Request("http://localhost/api/workspace/invitations/id/revoke", { method: "POST" }), sampleIdContext),
   ];
 
   for (const resp of deniedOperations) {
     assert.equal(resp.status, 403, `Expected 403 Forbidden for ANALYST`);
   }
 
-  // ANALYST is allowed feedback creation, csv import, reclassify, report creation (guard passes; invalid body yields 400/422, not 401 or 403)
+  // ANALYST is allowed feedback creation, csv import, reclassify, report creation (guard passes; invalid body yields 400/404, not 401 or 403)
   const allowedWriteResponses = [
     await createFeedback(new Request("http://localhost/api/feedback", { method: "POST", body: "{}" })),
     await updateFeedbackById(new Request("http://localhost/api/feedback/id", { method: "PATCH", body: "{}" }), sampleIdContext),
@@ -167,7 +190,7 @@ test("RBAC matrix: ANALYST role allows feedback and reports mutations but denies
   }
 });
 
-test("RBAC matrix: ADMIN role has access to all protected write operations and member management", async () => {
+test("RBAC matrix: ADMIN role has access to all protected write operations, member management, and invitations", async () => {
   currentAuth.authenticated = true;
   currentAuth.role = "ADMIN";
 
@@ -177,6 +200,7 @@ test("RBAC matrix: ADMIN role has access to all protected write operations and m
     await updateFeedbackById(new Request("http://localhost/api/feedback/id", { method: "PATCH", body: "{}" }), sampleIdContext),
     await createReport(new Request("http://localhost/api/reports", { method: "POST", body: "{}" })),
     await updateMemberRole(new Request("http://localhost/api/workspace/members/id", { method: "PATCH", body: "{}" }), sampleIdContext),
+    await createInvitation(new Request("http://localhost/api/workspace/invitations", { method: "POST", body: "{}" })),
   ];
 
   for (const resp of adminEndpoints) {

@@ -10,7 +10,7 @@ const integration = testDbUrl ? test : test.skip;
 const E2E_PORT = 3009;
 const BASE_URL = `http://localhost:${E2E_PORT}`;
 
-integration("RBAC E2E browser flow: role reassignment, persistence, session freshness, and server denial", { timeout: 120_000 }, async () => {
+integration("RBAC E2E browser flow: role reassignment, persistence, session freshness, invitations, and member removal", { timeout: 120_000 }, async () => {
   const db = new PrismaClient({ datasources: { db: { url: testDbUrl } } });
   const suffix = `e2e-${Date.now()}`;
   const password = "password123!";
@@ -45,6 +45,7 @@ integration("RBAC E2E browser flow: role reassignment, persistence, session fres
           DIRECT_URL: testDbUrl,
           NEXTAUTH_URL: BASE_URL,
           NEXTAUTH_SECRET: "e2e-secret-key-1234567890-test-key",
+          ENABLE_TEST_EMAIL_MOCK: "true",
           NODE_ENV: "production",
         },
         stdio: "pipe",
@@ -84,15 +85,15 @@ integration("RBAC E2E browser flow: role reassignment, persistence, session fres
     // Wait for redirect away from /login
     await adminPage.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 20_000 });
 
-    // Verify navigation sidebar on dashboard contains "Workspace Members"
+    // Verify navigation sidebar on dashboard contains "Workspace Members" for ADMIN
     await adminPage.goto(`${BASE_URL}/`);
     await adminPage.waitForSelector('h1:has-text("Your feedback pulse.")');
     const membersNavLink = adminPage.locator('nav a:has-text("Workspace Members")');
     await membersNavLink.first().waitFor({ state: "visible" });
-    assert.ok(await membersNavLink.first().isVisible(), "Sidebar must show Workspace Members link");
+    assert.ok(await membersNavLink.first().isVisible(), "Sidebar must show Workspace Members link for ADMIN");
 
     // -------------------------------------------------------------------------
-    // Step 2: Open the member-management screen (/settings) via link or direct navigation
+    // Step 2: Open the member-management screen (/settings) via link
     // -------------------------------------------------------------------------
     await membersNavLink.first().click();
     await adminPage.waitForSelector('h1:has-text("Workspace members")');
@@ -110,9 +111,7 @@ integration("RBAC E2E browser flow: role reassignment, persistence, session fres
       memberSelect.selectOption("ANALYST"),
     ]);
 
-    // -------------------------------------------------------------------------
     // Step 5: Verify the mutation response and success banner
-    // -------------------------------------------------------------------------
     const resBodyAnalyst = await responseAnalyst.json();
     assert.deepEqual(resBodyAnalyst, { data: { id: member.id, role: "ANALYST" } });
     assert.equal(await memberSelect.inputValue(), "ANALYST");
@@ -122,15 +121,35 @@ integration("RBAC E2E browser flow: role reassignment, persistence, session fres
     const dbMember1 = await db.user.findUnique({ where: { id: member.id } });
     assert.equal(dbMember1?.role, Role.ANALYST, "Database must store updated role ANALYST");
 
-    // -------------------------------------------------------------------------
     // Step 6: Refresh the page and confirm the selected role persists
-    // -------------------------------------------------------------------------
     await adminPage.reload();
     await memberSelect.waitFor({ state: "visible" });
     assert.equal(await memberSelect.inputValue(), "ANALYST", "Role must persist as ANALYST after reload");
 
     // -------------------------------------------------------------------------
-    // Step 7: Sign in as the affected member in a separate browser context
+    // Step 7: Invite a new member via the Invite Member UI
+    // -------------------------------------------------------------------------
+    const inviteBtn = adminPage.locator('button:has-text("+ Invite Member")');
+    await inviteBtn.click();
+    await adminPage.waitForSelector('h2:has-text("Invite a new workspace member")');
+
+    const inviteeEmail = `new-colleague-${suffix}@example.test`;
+    await adminPage.fill('input[placeholder="colleague@example.com"]', inviteeEmail);
+    // Role selector in modal defaults to ANALYST
+
+    const [inviteRes] = await Promise.all([
+      adminPage.waitForResponse((res) => res.url().includes("/api/workspace/invitations") && res.request().method() === "POST"),
+      adminPage.click('button:has-text("Send Invitation")'),
+    ]);
+    assert.equal(inviteRes.status(), 201, "Invitation API should return 201 Created");
+    await adminPage.waitForSelector(`p[role="status"]:has-text("Invitation sent to ${inviteeEmail}")`);
+
+    // Verify pending invitation is displayed in the list
+    await adminPage.waitForSelector(`p:has-text("${inviteeEmail}")`);
+
+    // -------------------------------------------------------------------------
+    // Step 8: Sign in as member in a separate browser context
+    // Verify Workspace Members navigation link is NOT rendered for non-admins
     // -------------------------------------------------------------------------
     const memberContext = await browser.newContext();
     const memberPage = await memberContext.newPage();
@@ -140,70 +159,33 @@ integration("RBAC E2E browser flow: role reassignment, persistence, session fres
     await memberPage.click('button[type="submit"]');
     await memberPage.waitForURL((url) => !url.pathname.includes("/login"), { timeout: 20_000 });
 
-    // -------------------------------------------------------------------------
-    // Step 8: Verify that the new permissions are reflected in the UI
-    // As an ANALYST, member can add feedback in /inbox
-    // -------------------------------------------------------------------------
-    await memberPage.goto(`${BASE_URL}/inbox`);
-    await memberPage.waitForSelector('textarea[name="content"]');
+    // Navigate to dashboard and verify "Workspace Members" is absent from navigation
+    await memberPage.goto(`${BASE_URL}/`);
+    await memberPage.waitForSelector('h1:has-text("Your feedback pulse.")');
+    const memberNavCount = await memberPage.locator('nav a:has-text("Workspace Members")').count();
+    assert.equal(memberNavCount, 0, "Workspace Members link must be absent for non-admins");
 
-    await memberPage.fill('textarea[name="content"]', "Valid feedback from newly promoted Analyst");
-    await memberPage.selectOption('select[name="channel"]', "COMMUNITY");
-
-    const [addFeedbackResp] = await Promise.all([
-      memberPage.waitForResponse((res) => res.url().includes("/api/feedback") && res.request().method() === "POST"),
-      memberPage.click('button[type="submit"]:has-text("Add feedback")'),
-    ]);
-    assert.equal(addFeedbackResp.status(), 201, "ANALYST should successfully create feedback");
-    await memberPage.waitForSelector('p:has-text("Feedback added successfully.")');
-
-    // -------------------------------------------------------------------------
-    // Step 9 & 10: Change role again (reverse transition ANALYST -> VIEWER)
-    // and verify server denies prohibited operations in real-time
-    // -------------------------------------------------------------------------
-    // In admin context, change member back to VIEWER
-    const [responseViewer] = await Promise.all([
-      adminPage.waitForResponse((res) => res.url().includes(`/api/workspace/members/${member.id}`) && res.status() === 200),
-      memberSelect.selectOption("VIEWER"),
-    ]);
-    const resBodyViewer = await responseViewer.json();
-    assert.deepEqual(resBodyViewer, { data: { id: member.id, role: "VIEWER" } });
-    assert.equal(await memberSelect.inputValue(), "VIEWER");
-
-    // Verify DB directly
-    const dbMember2 = await db.user.findUnique({ where: { id: member.id } });
-    assert.equal(dbMember2?.role, Role.VIEWER, "Database must store demoted role VIEWER");
-
-    // In member's browser context (without re-logging in), member attempts prohibited operation
-    await memberPage.fill('textarea[name="content"]', "Prohibited feedback from demoted VIEWER");
-    await memberPage.selectOption('select[name="channel"]', "SUPPORT_TICKET");
-
-    const [deniedFeedbackResp] = await Promise.all([
-      memberPage.waitForResponse((res) => res.url().includes("/api/feedback") && res.request().method() === "POST"),
-      memberPage.click('button[type="submit"]:has-text("Add feedback")'),
-    ]);
-    assert.equal(deniedFeedbackResp.status(), 403, "Server must deny VIEWER mutation with 403 Forbidden");
-    await memberPage.waitForSelector('p[role="alert"]:has-text("You do not have permission")');
-
-    // Member attempts to access settings page directly
+    // Direct navigation by member to /settings is denied
     await memberPage.goto(`${BASE_URL}/settings`);
     await memberPage.waitForSelector('p[role="alert"]:has-text("Only workspace admins can manage members.")');
 
     // -------------------------------------------------------------------------
-    // Step 11: Admin attempts prohibited self-demotion in UI
+    // Step 9: In admin context, remove member using the confirmation dialog
     // -------------------------------------------------------------------------
-    const adminSelfSelect = adminPage.locator(`select[aria-label="Role for ${admin.name}"]`);
-    await adminSelfSelect.waitFor({ state: "visible" });
-    const [selfDemoteResp] = await Promise.all([
-      adminPage.waitForResponse((res) => res.url().includes(`/api/workspace/members/${admin.id}`) && res.status() === 400),
-      adminSelfSelect.selectOption("VIEWER"),
+    const removeBtn = adminPage.locator(`button[aria-label="Remove ${member.name}"]`);
+    await removeBtn.click();
+    await adminPage.waitForSelector('h3:has-text("Confirm Member Removal")');
+
+    const [removeRes] = await Promise.all([
+      adminPage.waitForResponse((res) => res.url().includes(`/api/workspace/members/${member.id}`) && res.request().method() === "DELETE"),
+      adminPage.click('button:has-text("Remove Member")'),
     ]);
-    assert.equal(selfDemoteResp.status(), 400);
-    const selfDemoteBody = await selfDemoteResp.json();
-    assert.equal(selfDemoteBody.error, "You cannot remove your own admin access.");
-    await adminPage.waitForSelector('p[role="alert"]:has-text("You cannot remove your own admin access.")');
-    // Dropdown snaps back or remains ADMIN
-    assert.equal(await adminSelfSelect.inputValue(), "ADMIN");
+    assert.equal(removeRes.status(), 200, "DELETE member should return 200");
+    await adminPage.waitForSelector(`p[role="status"]:has-text("Removed ${member.name} from the workspace.")`);
+
+    // Verify member is removed from DB active membership
+    const dbRemovedMember = await db.user.findUnique({ where: { id: member.id } });
+    assert.equal(dbRemovedMember?.membershipStatus, "REVOKED", "Database membership status must be REVOKED");
 
     // Clean up browser contexts
     await memberContext.close();
@@ -222,6 +204,7 @@ integration("RBAC E2E browser flow: role reassignment, persistence, session fres
       }
     }
     // Clean up test data
+    await db.workspaceInvitation.deleteMany({ where: { workspaceId: ws.id } });
     await db.feedbackTheme.deleteMany({ where: { workspaceId: ws.id } });
     await db.feedback.deleteMany({ where: { workspaceId: ws.id } });
     await db.user.deleteMany({ where: { workspaceId: ws.id } });

@@ -20,12 +20,12 @@ Write-Host "`n=== 1. Unit Tests ==="
 & node --experimental-test-module-mocks --import tsx --test tests/**/*.unit.test.ts
 $unitCode = $LASTEXITCODE
 
-Write-Host "`n=== 2. Existing Unit & Integration Tests ==="
+Write-Host "`n=== 2. Existing Core Tests ==="
 & node --experimental-test-module-mocks --import tsx --test tests/route-auth.test.ts tests/feedback-query.test.ts tests/dashboard.test.ts tests/csv-import.test.ts tests/ask-loop.test.ts tests/ai-resilience.test.ts tests/auth.test.ts
 $existingCode = $LASTEXITCODE
 
-Write-Host "`n=== 3. Real PostgreSQL Tenant & RBAC Persistence Integration Tests ==="
-& node --experimental-test-module-mocks --import tsx --test tests/prisma-tenant.integration.test.ts tests/rbac-persistence.integration.test.ts tests/rbac-api-matrix.integration.test.ts
+Write-Host "`n=== 3. Real PostgreSQL Tenant, Persistence & Invitation Integration Tests ==="
+& node --experimental-test-module-mocks --import tsx --test tests/prisma-tenant.integration.test.ts tests/rbac-persistence.integration.test.ts tests/rbac-api-matrix.integration.test.ts tests/invitation-lifecycle.integration.test.ts
 $integrationCode = $LASTEXITCODE
 
 Write-Host "`n=== 4. Playwright Headless Browser E2E Test ==="
@@ -35,9 +35,9 @@ $e2eCode = $LASTEXITCODE
 Write-Host "Stopping test PostgreSQL..."
 & $pgCtl -D $dataDir stop
 
-Write-Host "`n=== Summary ==="
+Write-Host "`n=== Final Test Suite Execution Summary ==="
 Write-Host "Unit Tests Exit Code: $unitCode"
-Write-Host "Existing Tests Exit Code: $existingCode"
+Write-Host "Existing Core Tests Exit Code: $existingCode"
 Write-Host "Integration Tests Exit Code: $integrationCode"
 Write-Host "E2E Test Exit Code: $e2eCode"
 

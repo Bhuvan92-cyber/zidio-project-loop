@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Role } from "@prisma/client";
-import { canChangeMemberRole } from "@/lib/workspace/policy";
+import { canChangeMemberRole, canRemoveMember, canInviteRole } from "@/lib/workspace/policy";
 import { canWriteFeedback } from "@/lib/feedback/service";
 import { memberRoleSchema } from "@/lib/validation/feedback";
+import { invitationCreateSchema } from "@/lib/validation/invitation";
 import { AuthError, authErrorResponse, requireRole } from "@/lib/auth/guards";
 
 test("canChangeMemberRole enforces administrator privileges and safeguards", () => {
@@ -47,6 +48,63 @@ test("canChangeMemberRole enforces administrator privileges and safeguards", () 
   assert.equal(canChangeMemberRole("VIEWER", "ANALYST", "VIEWER", memberId, "other-1", 2), false);
   assert.equal(canChangeMemberRole("VIEWER", "VIEWER", "ADMIN", memberId, memberId, 2), false);
   assert.equal(canChangeMemberRole("VIEWER", "ADMIN", "VIEWER", memberId, otherAdminId, 2), false);
+});
+
+test("canRemoveMember enforces administrator permissions and safeguards", () => {
+  const adminId = "admin-1";
+  const otherAdminId = "admin-2";
+  const analystId = "analyst-1";
+  const viewerId = "viewer-1";
+
+  // Admin can remove analyst or viewer
+  assert.equal(canRemoveMember("ADMIN", "ANALYST", adminId, analystId, 1), true);
+  assert.equal(canRemoveMember("ADMIN", "VIEWER", adminId, viewerId, 1), true);
+
+  // Admin can remove another admin if multiple admins exist
+  assert.equal(canRemoveMember("ADMIN", "ADMIN", adminId, otherAdminId, 2), true);
+
+  // Admin cannot remove the last admin
+  assert.equal(canRemoveMember("ADMIN", "ADMIN", adminId, otherAdminId, 1), false);
+
+  // Admin cannot remove themselves
+  assert.equal(canRemoveMember("ADMIN", "ADMIN", adminId, adminId, 2), false);
+  assert.equal(canRemoveMember("ADMIN", "ADMIN", adminId, adminId, 1), false);
+
+  // Analyst and Viewer cannot remove any member
+  assert.equal(canRemoveMember("ANALYST", "VIEWER", analystId, viewerId, 2), false);
+  assert.equal(canRemoveMember("ANALYST", "ANALYST", analystId, analystId, 2), false);
+  assert.equal(canRemoveMember("VIEWER", "VIEWER", viewerId, viewerId, 2), false);
+  assert.equal(canRemoveMember("VIEWER", "ANALYST", viewerId, analystId, 2), false);
+});
+
+test("canInviteRole restricts invitation roles to ANALYST and VIEWER only", () => {
+  // Admin can invite ANALYST and VIEWER
+  assert.equal(canInviteRole("ADMIN", "ANALYST"), true);
+  assert.equal(canInviteRole("ADMIN", "VIEWER"), true);
+
+  // Admin cannot invite ADMIN role through invitation flow
+  assert.equal(canInviteRole("ADMIN", "ADMIN"), false);
+  assert.equal(canInviteRole("ADMIN", "SUPERADMIN"), false);
+  assert.equal(canInviteRole("ADMIN", "OWNER"), false);
+
+  // Non-admins cannot invite anyone
+  assert.equal(canInviteRole("ANALYST", "ANALYST"), false);
+  assert.equal(canInviteRole("ANALYST", "VIEWER"), false);
+  assert.equal(canInviteRole("VIEWER", "VIEWER"), false);
+});
+
+test("invitationCreateSchema rejects admin invites, invalid emails, and malformed roles", () => {
+  assert.equal(invitationCreateSchema.safeParse({ email: "user@example.com", role: "ANALYST" }).success, true);
+  assert.equal(invitationCreateSchema.safeParse({ email: "user@example.com", role: "VIEWER" }).success, true);
+
+  // Rejects ADMIN role
+  assert.equal(invitationCreateSchema.safeParse({ email: "user@example.com", role: "ADMIN" }).success, false);
+  assert.equal(invitationCreateSchema.safeParse({ email: "user@example.com", role: "OWNER" }).success, false);
+
+  // Rejects invalid emails
+  assert.equal(invitationCreateSchema.safeParse({ email: "invalid-email", role: "ANALYST" }).success, false);
+  assert.equal(invitationCreateSchema.safeParse({ email: "", role: "ANALYST" }).success, false);
+  assert.equal(invitationCreateSchema.safeParse({ role: "ANALYST" }).success, false);
 });
 
 test("memberRoleSchema accepts only canonical roles and rejects invalid values", () => {

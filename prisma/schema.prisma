@@ -13,6 +13,17 @@ enum Role {
   ANALYST
   VIEWER
 }
+enum MembershipStatus {
+  ACTIVE
+  REVOKED
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+}
+
 
 enum Sentiment {
   POS
@@ -42,6 +53,7 @@ model Workspace {
   feedback  Feedback[]
   themes    Theme[]
   reports   Report[]
+  invitations WorkspaceInvitation[]
 
   @@index([createdAt])
 }
@@ -52,9 +64,12 @@ model User {
   email        String    @unique
   passwordHash String
   role         Role      @default(VIEWER)
+  membershipStatus MembershipStatus @default(ACTIVE)
   workspaceId  String
   workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   reports      Report[]
+  invitationsSent     WorkspaceInvitation[] @relation("InvitationsSent")
+  invitationsAccepted WorkspaceInvitation[] @relation("InvitationsAccepted")
   createdAt    DateTime  @default(now())
 
   @@unique([id, workspaceId])
@@ -140,4 +155,28 @@ model Report {
 
   @@index([workspaceId, createdAt])
   @@index([workspaceId, periodStart, periodEnd])
+}
+
+model WorkspaceInvitation {
+  id          String           @id @default(cuid())
+  workspaceId String
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  email       String
+  role        Role             @default(VIEWER)
+  invitedById String
+  invitedBy   User             @relation("InvitationsSent", fields: [invitedById], references: [id], onDelete: Cascade)
+  tokenDigest String           @unique
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  acceptedById String?
+  acceptedBy  User?            @relation("InvitationsAccepted", fields: [acceptedById], references: [id], onDelete: SetNull)
+  revokedAt   DateTime?
+  resentAt    DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([email, status])
+  @@index([expiresAt])
 }
