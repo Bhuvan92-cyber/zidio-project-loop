@@ -29,6 +29,7 @@ export default function SettingsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isUnauthorized, setIsUnauthorized] = useState(false);
   const [pendingMemberIds, setPendingMemberIds] = useState<Set<string>>(new Set());
 
   // Invitation form state
@@ -47,14 +48,22 @@ export default function SettingsPage() {
 
   async function loadData() {
     setError("");
+    setIsUnauthorized(false);
     try {
       const [membersRes, invitesRes] = await Promise.all([
         fetch("/api/workspace/members"),
         fetch("/api/workspace/invitations"),
       ]);
 
+      if (membersRes.status === 403) {
+        setIsUnauthorized(true);
+        setError("Only workspace admins can manage members.");
+        setLoading(false);
+        return;
+      }
+
       if (!membersRes.ok) {
-        setError(membersRes.status === 403 ? "Only workspace admins can manage members." : "Members could not be loaded.");
+        setError("Members could not be loaded.");
         setLoading(false);
         return;
       }
@@ -215,6 +224,39 @@ export default function SettingsPage() {
     }
   }
 
+  // 1. Distinguishable Unauthorized State: Non-admin users see a clean access restricted screen
+  if (isUnauthorized) {
+    return (
+      <main className="min-h-screen bg-[#f4f7f5] p-5 sm:p-8">
+        <div className="mx-auto max-w-2xl rounded-3xl border border-[#dce5de] bg-white p-8 text-center shadow-sm sm:p-12">
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[#fff0ed] text-2xl text-[#a44335]">
+            🔒
+          </div>
+          <p className="mt-6 text-xs font-semibold uppercase tracking-[0.2em] text-[#789181]">
+            Workspace / Access Control
+          </p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-[#193c2a] sm:text-3xl">
+            Access Restricted
+          </h1>
+          <p className="mt-3 text-sm leading-relaxed text-[#718379]">
+            Only workspace administrators have permission to view members, manage roles, and issue invitations.
+          </p>
+          <p role="alert" className="mt-4 rounded-xl bg-[#fff0ed] px-4 py-2.5 text-xs font-medium text-[#a44335]">
+            Only workspace admins can manage members.
+          </p>
+          <div className="mt-8">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 rounded-xl bg-[#193c2a] px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-[#235038]"
+            >
+              Return to dashboard
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
   const activeMembers = members.filter((m) => m.membershipStatus !== "REVOKED");
 
   return (
@@ -244,9 +286,18 @@ export default function SettingsPage() {
         </header>
 
         {error && (
-          <p role="alert" className="mt-6 rounded-xl bg-[#fff0ed] px-4 py-3 text-sm text-[#a44335]">
-            {error}
-          </p>
+          <div role="alert" className="mt-6 rounded-xl bg-[#fff0ed] p-4 text-sm text-[#a44335]">
+            <div className="flex items-center justify-between gap-3">
+              <p>{error}</p>
+              <button
+                type="button"
+                onClick={() => void loadData()}
+                className="rounded-lg bg-[#a44335] px-3 py-1 text-xs font-semibold text-white hover:bg-[#86372b]"
+              >
+                Retry
+              </button>
+            </div>
+          </div>
         )}
 
         {success && (

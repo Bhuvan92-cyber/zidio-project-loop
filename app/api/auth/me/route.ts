@@ -1,4 +1,3 @@
-
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/config";
@@ -11,7 +10,13 @@ export async function GET() {
     const session = await getServerSession(authOptions);
 
     if (!session?.user?.id) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      return NextResponse.json(
+        { authenticated: false },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+        }
+      );
     }
 
     let user;
@@ -57,26 +62,45 @@ export async function GET() {
     }
 
     if (!user) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      return NextResponse.json(
+        { authenticated: false },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+        }
+      );
     }
 
     if (
       "membershipStatus" in user &&
       user.membershipStatus !== "ACTIVE"
     ) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
+      return NextResponse.json(
+        { authenticated: false },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+        }
+      );
     }
 
-    return NextResponse.json({
-      authenticated: true,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        workspaceId: user.workspaceId,
+    return NextResponse.json(
+      {
+        authenticated: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          workspaceId: user.workspaceId,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate",
+        },
+      }
+    );
   } catch (error) {
     console.error(
       "Auth check failed:",
@@ -85,7 +109,10 @@ export async function GET() {
 
     return NextResponse.json(
       { authenticated: false },
-      { status: 500 }
+      {
+        status: 500,
+        headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+      }
     );
   }
 }
