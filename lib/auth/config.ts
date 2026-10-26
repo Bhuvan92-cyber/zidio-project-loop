@@ -14,13 +14,79 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         const parsed = loginSchema.safeParse(credentials);
         if (!parsed.success) return null;
-        if (isLoginRateLimited(parsed.data.email)) throw new Error("Too many sign-in attempts. Try again later.");
-        const user = await db.user.findUnique({ where: { email: parsed.data.email } });
-        if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
-          recordFailedLogin(parsed.data.email);
+
+        const email = parsed.data.email;
+        if (isLoginRateLimited(email)) {
+          console.warn(`[Auth] Sign-in rate limit active for account: ${email}`);
+          throw new Error("Too many sign-in attempts. Try again later.");
+        }
+
+        let user;
+        try {
+          user = await db.user.findUnique({
+            where: { email },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+              workspaceId: true,
+              passwordHash: true,
+              membershipStatus: true,
+            },
+          });
+        } catch (dbError: unknown) {
+          const message = dbError instanceof Error ? dbError.message : String(dbError);
+          const code = (dbError as { code?: string })?.code;
+
+          // Schema backward compatibility: handle unmigrated database missing membershipStatus column
+          if (code === "P2022" || /column.*membershipStatus.*does not exist|P2022/i.test(message)) {
+            console.warn("[Auth] Schema fallback: membershipStatus column not present; querying base columns.");
+            try {
+              user = await db.user.findUnique({
+                where: { email },
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                  workspaceId: true,
+                  passwordHash: true,
+                },
+              });
+            } catch (fallbackError: unknown) {
+              console.error("[Auth] Database error during fallback credentials query:", {
+                code: (fallbackError as { code?: string })?.code,
+                message: fallbackError instanceof Error ? fallbackError.message : String(fallbackError),
+              });
+              throw new Error("The authentication service is temporarily unavailable. Please try again in a few moments.");
+            }
+          } else {
+            console.error("[Auth] Database error during credentials authorization:", {
+              code,
+              message,
+            });
+            throw new Error("The authentication service is temporarily unavailable. Please try again in a few moments.");
+          }
+        }
+
+        if (!user) {
+          recordFailedLogin(email);
           return null;
         }
-        clearLoginFailures(parsed.data.email);
+
+        if ("membershipStatus" in user && user.membershipStatus === "REVOKED") {
+          console.warn(`[Auth] Sign-in attempt for revoked account: ${email}`);
+          throw new Error("This account has been deactivated. Please contact your workspace administrator.");
+        }
+
+        const isMatch = await bcrypt.compare(parsed.data.password, user.passwordHash);
+        if (!isMatch) {
+          recordFailedLogin(email);
+          return null;
+        }
+
+        clearLoginFailures(email);
         return { id: user.id, name: user.name, email: user.email, role: user.role, workspaceId: user.workspaceId };
       },
     }),

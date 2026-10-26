@@ -16,11 +16,28 @@ export async function requireSession() {
     throw new AuthError("Authentication required.", 401);
   }
 
-  const user = await db.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, role: true, workspaceId: true, membershipStatus: true },
-  });
-  if (!user || user.membershipStatus !== "ACTIVE") throw new AuthError("Authentication required.", 401);
+  let user;
+  try {
+    user = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, role: true, workspaceId: true, membershipStatus: true },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: string })?.code;
+    if (code === "P2022" || /column.*membershipStatus.*does not exist|P2022/i.test(message)) {
+      user = await db.user.findUnique({
+        where: { id: session.user.id },
+        select: { id: true, role: true, workspaceId: true },
+      });
+    } else {
+      throw err;
+    }
+  }
+
+  if (!user || ("membershipStatus" in user && user.membershipStatus !== "ACTIVE")) {
+    throw new AuthError("Authentication required.", 401);
+  }
   session.user.workspaceId = user.workspaceId;
   session.user.role = user.role;
   return session;
